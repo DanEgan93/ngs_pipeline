@@ -1,0 +1,1 @@
+fastqc=/home/degan/Documents/pipeline_tools/FastQC/fastqc
