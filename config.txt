@@ -1,1 +1,7 @@
 fastqc=/home/degan/Documents/pipeline_tools/FastQC/fastqc
+trimmomatic=/home/degan/Documents/pipeline_tools/Trimmomatic-0.38/trimmomatic-0.38.jar
+illuminaclip=/home/degan/Documents/pipeline_tools/Trimmomatic-0.38/adapters/NexteraPE-PE.fa:0:95:95
+samtools=/home/degan/Documents/pipeline_tools/samtools-1.9/samtools
+bwa=/home/degan/Documents/pipeline_tools/bwa-0.7.16a/bwa
+bwa_threads=1
+reference_genome=/media/sf_S_DRIVE/genomic_resources/gatk_bundle/ucsc.hg19.fasta
