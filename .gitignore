@@ -1,2 +1,3 @@
 ngs_pipeline_env/
 *.log
+.ruffus_history.sqlite
