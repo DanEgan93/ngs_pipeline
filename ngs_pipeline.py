@@ -109,6 +109,10 @@ initial_files = glob.glob('{input_dir}*.fastq.gz'.format(input_dir=args.input_di
 #  	log.info(trim_cmd)
 #  	os.system(trim_cmd)
 
+########################################################
+
+# Second quality check- FASTQC
+
 # @follows(quality_trim)
 # @transform('{input}*.qfilter.fastq.gz'.format(input=args.input_dir), suffix('.qfilter.fastq.gz'), ' ')
 # def second_quality_check(infile, outfile):
@@ -123,53 +127,234 @@ initial_files = glob.glob('{input_dir}*.fastq.gz'.format(input_dir=args.input_di
 # 	os.system(fastqc_cmd)
 
 
+########################################################
+
+# Aligning to a reference genome- BWA
+
 # @follows(second_quality_check)
-@collate('{input}*.qfilter.fastq.gz'.format(input=args.input_dir), formatter('([^/]+)_L001_R[12]_001.qfilter.fastq.gz$'),'{path[0]}/{1[0]}.bwa.bam')
-def align_FASTQ(infile,outfile):
+# @collate('{input}*.qfilter.fastq.gz'.format(input=args.input_dir), formatter('([^/]+)_L001_R[12]_001.qfilter.fastq.gz$'),'{path[0]}/{1[0]}.bwa.bam')
+# def align_FASTQ(infile,outfile):
 
-	FASTQ1 = infile[0]
-	FASTQ2 = infile[1]
+# 	FASTQ1 = infile[0]
+# 	FASTQ2 = infile[1]
 
-	# Removes the qfilter from fastq file name
-	original_FASTQ = re.sub(r'.qfilter.fastq.gz','.fastq.gz',FASTQ1)
-	# Ensures renamed file is in the correct location
-	path = os.path.realpath('%s' % original_FASTQ)
-	sample_name = re.sub(r'_L001_R1_001.qfilter.fastq.gz','',FASTQ1)
+# 	# Removes the qfilter from fastq file name
+# 	original_FASTQ = re.sub(r'.qfilter.fastq.gz','.fastq.gz',FASTQ1)
+# 	# Ensures renamed file is in the correct location
+# 	path = os.path.realpath('%s' % original_FASTQ)
+# 	sample_name = re.sub(r'_L001_R1_001.qfilter.fastq.gz','',FASTQ1)
 
-	try:
-		# Extracting the patient ID for the storage of the bam file
-		flowcell = re.search(r'/([0-9]{6})_(M.+?)_([0-9].+?)-(.+?)/',path).groups(1)[3]
-		split_path = path.split('/')
+# 	try:
+# 		# Extracting the patient ID for the storage of the bam file
+# 		flowcell = re.search(r'/([0-9]{6})_(M.+?)_([0-9].+?)-(.+?)/',path).groups(1)[3]
+# 		split_path = path.split('/')
 
-	except AttributeError:
+# 	except AttributeError:
 
-		flowcell = 'NA'
+# 		flowcell = 'NA'
 
-	align_command = ('{bwa} mem -t {threads} -M -k 18 -R "@RG\\tID:{worksheet}.{flowcell}\\tCN:WMRGL\\tDS:{panel}\\tDT:{date}\\tSM:{sample_name}\\tLB:{worksheet}\\tPL:ILLUMINA" \
-				{genome} {FASTQ1} {FASTQ2} \
-	 			| sed \'s/-R @RG.*//\' - \
-	 			| {samtools} view -Sb - \
-	 			| {samtools} sort -T {sample_name}.temp -O bam - > {outfile}'.format(
+# 	align_command = ('{bwa} mem -t {threads} -M -k 18 -R "@RG\\tID:{worksheet}.{flowcell}\\tCN:WMRGL\\tDS:{panel}\\tDT:{date}\\tSM:{sample_name}\\tLB:{worksheet}\\tPL:ILLUMINA" \
+# 				{genome} {FASTQ1} {FASTQ2} \
+# 	 			| sed \'s/-R @RG.*//\' - \
+# 	 			| {samtools} view -Sb - \
+# 	 			| {samtools} sort -T {sample_name}.temp -O bam - > {outfile}'.format(
 
-				samtools    = config_dict['samtools'], 
-				bwa         = config_dict['bwa'],
-				threads     = config_dict['bwa_threads'],
-				worksheet   = 'test',
-				flowcell    = flowcell,
-				date        = date_time_iso,
-				sample_name = sample_name,
-				genome      = config_dict['reference_genome'],
-				FASTQ1      = FASTQ1,
-				FASTQ2      = FASTQ2,
-				outfile     = outfile, 
-				panel       ='panel'))
+# 				samtools    = config_dict['samtools'], 
+# 				bwa         = config_dict['bwa'],
+# 				threads     = config_dict['bwa_threads'],
+# 				worksheet   = 'test',
+# 				flowcell    = flowcell,
+# 				date        = date_time_iso,
+# 				sample_name = sample_name,
+# 				genome      = config_dict['reference_genome'],
+# 				FASTQ1      = FASTQ1,
+# 				FASTQ2      = FASTQ2,
+# 				outfile     = outfile, 
+# 				panel       ='panel'))
 
-	#Log information
-	log.info('aligning: '+ FASTQ1 + ' ' + FASTQ2)
+# 	#Log information
+# 	log.info('aligning: '+ FASTQ1 + ' ' + FASTQ2)
+# 	log.info(align_command)
+# 	#Run command
+# 	os.system(align_command)
 
-	log.info(align_command)
 
-	#Run command
-	os.system(align_command)
+#################################################################
+
+# Index the bam file (Sorting completed in the previous step)
+# Indexing allows fast random accessing
+
+# @follows(align_FASTQ)
+# @transform('{input}*.bwa.bam'.format(input=args.input_dir),suffix('.bwa.bam'),'.bwa.bam.bai')
+# def index_original_bam(infile,outfile):
+# 	command = '{samtools} index {infile}'.format(
+# 	samtools = config_dict['samtools'],
+# 	infile = infile
+# 	)
+
+# 	log.info('indexing file : '+ infile)
+# 	log.info(command)
+# 	os.system(command)
+
+
+#################################################################
+# Local re-alignment- Abra (version 1 (output needs sorting))
+
+# @follows(index_original_bam)
+# @transform('{input}*.bwa.bam'.format(input=args.input_dir),suffix('.bwa.bam'),'.bwa.realn.bam')
+# def abra_realign_bam(infile,outfile):
+# 	# make a temporary directory for ABRA to work in:
+# 	temp_folder = '{dir}/temp'.format(dir=args.input_dir)
+
+# 	if os.path.isdir(temp_folder) != True:
+# 		os.mkdir(temp_folder)
+
+
+# 	name = re.sub(".bwa.bam", "", infile)
+# 	command = "java -Xmx4G -jar {abra}\
+# 	--in {infile} \
+# 	--out {outfile} \
+# 	--ref {ref} \
+# 	--targets {targets}\
+# 	--threads {threads} \
+# 	--working {working} > {log_location} 2>&1".format(
+
+# 		abra=config_dict['abra'],
+# 		infile=infile,
+# 		outfile=outfile,
+# 		ref=config_dict['reference_genome'],
+# 		targets=config_dict['bed_file'],
+# 		threads=config_dict['abra_threads'],
+# 		working=temp_folder,
+# 		log_location=name+'.abra.log'
+# 		)
+
+# 	os.system(command)
+
+
+
+#################################################################
+
+# Sorting re-aligned bam file
+
+# @follows(abra_realign_bam)
+# @transform(["{input}*.bwa.realn.bam".format(input=args.input_dir)], suffix(".bwa.realn.bam"), ".bwa.realn.sorted.bam")
+# def sorted_realign_bam(infile, outfile):
+
+
+
+# 	#logging
+# 	log.info('sorting realigned bam file: ' + infile)
+# 	command = '{samtools} sort {infile} > {outfile}'.format(
+# 		samtools=config_dict['samtools'],
+# 		infile=infile,
+# 		outfile=outfile)
+# 	log.info(command)
+# 	#run command
+# 	os.system(command)
+
+
+################################################################
+
+# Indexing sorted-realigned bam file
+
+
+# @follows(sorted_realign_bam)
+# @transform(['{input}*.bwa.realn.sorted.bam'.format(input=args.input_dir)], suffix(".bwa.realn.sorted.bam"), ".bwa.realn.sorted.bam.bai" )
+# def index_realigned_bam(infile,outfile):
+# 	command = '{samtools} index {infile}'.format(
+# 	samtools = config_dict['samtools'],
+# 	infile = infile
+# 	)
+
+# 	log.info('indexing file : '+ infile)
+# 	log.info(command)
+# 	os.system(command)
+
+################################################################
+
+# Fixing mates
+
+# @follows(index_realigned_bam)
+# @transform(['{input}*.bwa.realn.sorted.bam'.format(input=args.input_dir)], suffix('bwa.realn.sorted.bam'), 'bwa.realn.fixed.bam')
+# def picard_fix_mate(infile,outfile):
+
+# 	picard_temp_folder = '{dir}/picar_temp_folder'.format(dir=args.input_dir)
+
+# 	if os.path.isdir(picard_temp_folder) != True:
+# 		os.mkdir(picard_temp_folder)
+
+# 	command = 'java -Xmx2G -jar {picard} FixMateInformation INPUT={infile} OUTPUT={outfile} TMP_DIR={picard_temp_dir}'.format(
+# 		picard = config_dict['picard'],
+# 		infile = infile,
+# 		outfile = outfile,
+# 		picard_temp_dir = picard_temp_folder
+# 		) 
+
+# 	log.info('Mate fixing: '+ infile)
+#  	log.info(command)
+# 	os.system(command)
+
+
+################################################################
+
+# Indexing fixed bam file
+
+
+# @follows(picard_fix_mate)
+# @transform(['{input}*.bwa.realn.fixed.bam'.format(input=args.input_dir)], suffix(".bwa.realn.fixed.bam"), ".bwa.realn.fixed.bam.bai" )
+# def index_fixed_bam(infile,outfile):
+# 	command = '{samtools} index {infile}'.format(
+# 	samtools = config_dict['samtools'],
+# 	infile = infile
+# 	)
+
+# 	log.info('indexing fixed file: '+ infile)
+# 	log.info(command)
+# 	os.system(command)
+
+####################################################################
+
+# Sorting fixed bam file
+
+
+# @follows(index_fixed_bam)
+# @transform(["{input}*.bwa.realn.fixed.bam".format(input=args.input_dir)], suffix(".bwa.realn.fixed.bam"), ".bwa.realn.fixed.sorted.bam")
+# def sorted_fixed_bam(infile, outfile):
+# 	command = '{samtools} sort {infile} > {outfile}'.format(
+# 		samtools=config_dict['samtools'],
+# 		infile=infile,
+# 		outfile=outfile)
+# 	log.info(command)
+# 	#run command
+# 	os.system(command)
+
+#####################################################################
+
+# Indexing the realigned, fixed and sorted bam
+# @follows(sorted_fixed_bam)
+# @transform(["{input}*.bwa.realn.fixed.sorted.bam".format(input=args.input_dir)], suffix('.bwa.realn.fixed.sorted.bam'), '.bwa.realn.fixed.sorted.bam.bai') 
+# def index_fixed_sorted_bam(infile,outfile):
+# 	command = '{samtools} index {infile}'.format(
+# 	samtools = config_dict['samtools'],
+# 	infile = infile
+# 	)
+
+# 	log.info('indexing fixed sorted file: '+ infile)
+# 	log.info(command)
+# 	os.system(command)
+
+
+#####################################################################
+
+# Variant calling- VarScan
+
+####### TODO- call variants of raligned, fixed, sorted bam file #######
+
+
+
+
+
+
 
 pipeline_run()
