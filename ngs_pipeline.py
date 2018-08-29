@@ -349,12 +349,91 @@ initial_files = glob.glob('{input_dir}*.fastq.gz'.format(input_dir=args.input_di
 
 # Variant calling- VarScan
 
-####### TODO- call variants of raligned, fixed, sorted bam file #######
+####### VarScan must be run in germline mode because there are no control samples to run #######
+
+# @follows(index_fixed_sorted_bam)
+# @transform(["{input}*.bwa.realn.fixed.sorted.bam".format(input=args.input_dir)], suffix('.bwa.realn.fixed.sorted.bam'), '.vcf') 
+# def call_variants_varscan(infile,outfile):
+
+# 	name = re.sub(r'.bwa.realn.fixed.sorted.bam', '', infile)
+# 	samp_name = name.split('/')[-1]
+
+	## Call all snp variants and store as VCF
+	# snp_command = "{samtools} mpileup -B \
+	# 		-f {reference} \
+	# 		{infile} | java -jar {var_scan} mpileup2snp \
+	# 		--min-coverage 8 \
+	# 		--min-reads2 2 \
+	# 		--min-avg-qual 10 \
+	# 		--p-value 99e02 \
+	# 		--output-vcf 1 \
+	# 		--strand-filter 0 \
+	# 		> {name}.snps.vs2.vcf".format(samtools=config_dict['samtools'],reference=config_dict['reference_genome'], infile=infile, var_scan=config_dict['varscan'], name=name)
+	# log.info('Calling variants for {file}'.format(file=infile))
+	# log.info(snp_command)
+	# os.system(snp_command)
 
 
+	## Call all indel variants and store as VCF
+	# indel_command = "{samtools} mpileup -B \
+	# 		-f {reference} \
+	# 		{infile} | java -jar {var_scan} mpileup2indel \
+	# 		--min-coverage 8 \
+	# 		--min-reads2 2 \
+	# 		--min-avg-qual 10 \
+	# 		--min-avg-freq .01 \
+	# 		--p-value 99e-02 \
+	# 		--output-vcf 1 \
+	# 		--strand-filter 0 \
+	# 		> {name}.indel.vs2.vcf".format(samtools=config_dict['samtools'], reference=config_dict['reference_genome'], infile=infile, var_scan=config_dict['varscan'], name=name)
+
+	# log.info('Calling indel variants for {file}'.format(file=samp_name))
+	# log.info(indel_command)
+	# os.system(indel_command)
 
 
+	# # Must add perl5lib to path before vcftools can be used
+	# # replace the 'Sample1' label
+	# sed_snp_command = "sed -i 's/Sample1/{samp_name}/' {name}.snps.vs2.vcf".format(samp_name=samp_name, name=name)
+	# sed_indel_command = "sed -i 's/Sample1/{samp_name}/' {name}.indel.vs2.vcf".format(samp_name=samp_name, name=name)
+	# os.system(sed_snp_command)
+	# os.system(sed_indel_command)
+	# log.info('Removing Sample1 from the vcf files')
+
+	# combine_vcf_command = "{vcf_concat} {name}.snps.vs2.vcf {name}.indel.vs2.vcf > {name}.merged.vcf".format(vcf_concat=config_dict['vcf_concat'], name=name)
+	# os.system(combine_vcf_command)
+	# log.info('Combining SNP and indel VCF files')
+
+##################################################################
+
+## variant normalization- VT
+## Splits, left-align and trims in one step
+
+# @follows(call_variants_varscan)
+# @transform(['{input}*.merged.vcf'.format(input=args.input_dir)], suffix('.merged.vcf'), '.normal.vcf')
+# def normalize_vcf(infile,outfile):
+# 	command = '{vt} decompose -s {sample} | {vt} normalize -m -r {reference} -o {output} -'.format(
+# 		vt=config_dict['vt'],
+# 		sample=infile,
+# 		reference=config_dict['reference_genome'],
+# 		output=outfile)
+
+# 	os.system(command)
+# 	log.info('Decomposing and norimalizing merged VCF file')
+# 	log.info(command)
 
 
+# @follows(normalize_vcf)
+@transform(['{input}*.normal.vcf'.format(input=args.input_dir)], suffix('.normal.vcf'), '.vep.vcf')
+def vep_annotation(infile,outfile):
+	command = '{vep} -i {infile} -o {outfile} --cache --fork 4 --dir_cache=/media/sf_S_drive/ensembl/cache/ --vcf --flag_pick \
+			--exclude_predicted --everything --dont_skip --total_length --offline --fasta {reference}'.format(
+				vep= config_dict['vep'],
+				infile= infile,
+				outfile= outfile,
+				reference= config_dict['reference_genome']
+				)
+
+	os.system(command)
 
 pipeline_run()
